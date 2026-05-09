@@ -1,7 +1,7 @@
 import "@picocss/pico/css/pico.min.css";
 import "./styles.css";
 
-import { Compartment, EditorState } from "@codemirror/state";
+import { Annotation, Compartment, EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { searchKeymap } from "@codemirror/search";
@@ -23,6 +23,17 @@ function saveStorage(key, value) {
 const initialDoc = loadStorage(STORAGE_DOC) ?? "";
 const initialTitle = loadStorage(STORAGE_TITLE) ?? "";
 
+const FromShareLoad = Annotation.define();
+let linkedToShare = false;
+
+function forkFromShare() {
+  if (!linkedToShare) return;
+  linkedToShare = false;
+  window.history.replaceState(null, "", location.pathname + location.search);
+  saveStorage(STORAGE_TITLE, titleInput.value);
+  saveStorage(STORAGE_DOC, view.state.doc.toString());
+}
+
 const previewEl = document.getElementById("preview");
 const previewToggle = document.getElementById("toggle-preview");
 const wrapToggle = document.getElementById("toggle-wrap");
@@ -34,6 +45,7 @@ const clearBtn = document.getElementById("clear");
 
 titleInput.value = initialTitle;
 titleInput.addEventListener("input", () => {
+  if (linkedToShare) forkFromShare();
   saveStorage(STORAGE_TITLE, titleInput.value);
 });
 
@@ -54,6 +66,8 @@ const previewSync = EditorView.updateListener.of((update) => {
 let docSaveTimer = null;
 const persistDoc = EditorView.updateListener.of((update) => {
   if (!update.docChanged) return;
+  if (update.transactions.some((tr) => tr.annotation(FromShareLoad))) return;
+  if (linkedToShare) forkFromShare();
   if (docSaveTimer) clearTimeout(docSaveTimer);
   docSaveTimer = setTimeout(() => {
     saveStorage(STORAGE_DOC, update.state.doc.toString());
@@ -127,6 +141,7 @@ function sanitizeFilename(title) {
 }
 
 clearBtn.addEventListener("click", () => {
+  linkedToShare = false;
   titleInput.value = "";
   saveStorage(STORAGE_TITLE, "");
   view.dispatch({
@@ -171,6 +186,7 @@ shareBtn.addEventListener("click", async () => {
     const url = new URL(location.href);
     url.hash = `s=${id}&k=${keyB64}`;
     window.history.replaceState(null, "", url.toString());
+    linkedToShare = true;
     await navigator.clipboard.writeText(url.toString());
     shareBtn.textContent = original;
     shareBtn.disabled = false;
@@ -192,13 +208,12 @@ async function loadFromHash() {
   try {
     const plaintext = await loadShare(id, keyB64);
     const { title = "", content = "" } = JSON.parse(plaintext);
+    linkedToShare = true;
     titleInput.value = title;
-    saveStorage(STORAGE_TITLE, title);
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: content },
+      annotations: FromShareLoad.of(true),
     });
-    saveStorage(STORAGE_DOC, content);
-    window.history.replaceState(null, "", location.pathname + location.search);
   } catch (e) {
     console.error("load shared doc failed", e);
   }
