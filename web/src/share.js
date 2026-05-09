@@ -40,7 +40,7 @@ async function decryptPayload(keyB64, ciphertextB64) {
 
 export async function createShare(payload) {
   const { ciphertextB64, keyB64 } = await encryptPayload(payload);
-  const res = await fetch("/api/shares", {
+  const res = await fetch("./api/shares", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ciphertext: ciphertextB64 }),
@@ -51,7 +51,7 @@ export async function createShare(payload) {
 }
 
 export async function loadShare(id, keyB64) {
-  const res = await fetch(`/api/shares/${encodeURIComponent(id)}`);
+  const res = await fetch(`./api/shares/${encodeURIComponent(id)}`);
   if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
   const { ciphertext } = await res.json();
   return decryptPayload(keyB64, ciphertext);

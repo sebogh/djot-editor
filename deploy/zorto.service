@@ -1,0 +1,22 @@
+[Unit]
+Description=Zorto djot editor backend
+After=network.target
+
+[Service]
+Type=simple
+User=zorto
+Group=zorto
+ExecStart=/usr/local/bin/zorto -addr 127.0.0.1:8080 -db /var/lib/zorto/zorto.db
+# To allow creating new shares, append `-share=true` to the line above.
+Restart=on-failure
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/zorto
+
+[Install]
+WantedBy=multi-user.target

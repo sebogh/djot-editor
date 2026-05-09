@@ -2,7 +2,7 @@ import "@picocss/pico/css/pico.min.css";
 import "./styles.css";
 
 import { Annotation, Compartment, EditorState } from "@codemirror/state";
-import { EditorView, keymap } from "@codemirror/view";
+import { drawSelection, EditorView, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { searchKeymap } from "@codemirror/search";
 import { parse, renderHTML } from "@djot/djot";
@@ -76,6 +76,12 @@ const persistDoc = EditorView.updateListener.of((update) => {
 
 const editorTheme = EditorView.theme({
   ".cm-content": { padding: "16px 21px" },
+  ".cm-cursor, .cm-dropCursor": {
+    borderLeft: "none",
+    background: "var(--pico-color)",
+    width: "1ch",
+    opacity: "0.45",
+  },
 });
 
 const wrapCompartment = new Compartment();
@@ -86,6 +92,7 @@ const view = new EditorView({
     doc: initialDoc,
     extensions: [
       history(),
+      drawSelection(),
       djotHighlight,
       previewSync,
       persistDoc,
@@ -95,6 +102,8 @@ const view = new EditorView({
     ],
   }),
 });
+
+view.focus();
 
 wrapToggle.addEventListener("change", () => {
   view.dispatch({
@@ -219,4 +228,19 @@ async function loadFromHash() {
   }
 }
 
+async function applyServerConfig() {
+  try {
+    const res = await fetch("./api/config");
+    if (!res.ok) return;
+    const config = await res.json();
+    if (config.shareEnabled === false) {
+      shareBtn.disabled = true;
+      shareBtn.title = "Sharing is disabled on this server";
+    }
+  } catch {
+    /* backend unreachable; leave button as-is */
+  }
+}
+
+applyServerConfig();
 loadFromHash();

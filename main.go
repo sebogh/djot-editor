@@ -37,6 +37,7 @@ type shareGetResponse struct {
 func main() {
 	addr := flag.String("addr", ":8080", "listen address")
 	dbPath := flag.String("db", "zorto.db", "sqlite database path")
+	share := flag.Bool("share", false, "allow creating new shares")
 	flag.Parse()
 
 	db, err := sql.Open("sqlite", *dbPath)
@@ -73,7 +74,15 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
+	mux.HandleFunc("GET /api/config", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]bool{"shareEnabled": *share})
+	})
 	mux.HandleFunc("POST /api/shares", func(w http.ResponseWriter, r *http.Request) {
+		if !*share {
+			http.Error(w, "sharing is disabled", http.StatusForbidden)
+			return
+		}
 		body, err := io.ReadAll(io.LimitReader(r.Body, maxShareBytes+1))
 		if err != nil {
 			http.Error(w, "read body", http.StatusBadRequest)
