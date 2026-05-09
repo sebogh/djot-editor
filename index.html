@@ -1,28 +1,33 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <title>Djot Editor</title>
-    <style>
-      body { margin: 0; font-family: system-ui; }
-      .cm-editor { height: 100vh; font-size: 14px; }
-      .djot-heading      { color: #c026d3; font-weight: 700; }
-      .djot-emph         { color: #2563eb; font-style: italic; }
-      .djot-strong       { color: #2563eb; font-weight: 700; }
-      .djot-link         { color: #0891b2; text-decoration: underline; }
-      .djot-url          { color: #0891b2; }
-      .djot-code,
-      .djot-verbatim     { background: #f3f4f6; color: #be185d; padding: 0 2px; border-radius: 2px; font-family: ui-monospace, monospace; }
-      .djot-code-block   { background: #f9fafb; color: #334155; }
-      .djot-blockquote   { color: #6b7280; font-style: italic; }
-      .djot-hr           { color: #9ca3af; }
-      .djot-raw          { color: #ea580c; }
-      .djot-math         { color: #7c3aed; }
-    </style>
   </head>
   <body>
-    <div id="editor"></div>
+    <div id="toolbar">
+      <input id="title" type="text" placeholder="Untitled" aria-label="Document title" />
+      <div class="toolbar-actions">
+        <select id="theme-select" aria-label="Theme">
+          <option value="system">System</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+        <label>
+          <input id="toggle-wrap" type="checkbox" role="switch" checked />
+          Wrap
+        </label>
+        <label>
+          <input id="toggle-preview" type="checkbox" role="switch" />
+          Preview
+        </label>
+        <button id="download" type="button" class="outline">Download</button>
+      </div>
+    </div>
+    <div id="workspace">
+      <div id="editor"></div>
+      <div id="preview" hidden></div>
+    </div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
-

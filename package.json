@@ -18,7 +18,9 @@
     "@codemirror/view": "^6.42.1",
     "@djot/djot": "^0.3.2",
     "@lezer/highlight": "^1.2.3",
-    "codemirror": "^6.0.2"
+    "@picocss/pico": "^2.1.1",
+    "codemirror": "^6.0.2",
+    "dompurify": "^3.4.2"
   },
   "devDependencies": {
     "vite": "^8.0.11"
