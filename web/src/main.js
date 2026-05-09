@@ -10,18 +10,18 @@ import DOMPurify from "dompurify";
 import { djotHighlight } from "./djot-highlight.js";
 import { createShare, loadShare } from "./share.js";
 
-const startDoc = `# Hello Djot
+const STORAGE_DOC = "djot-editor:doc";
+const STORAGE_TITLE = "djot-editor:title";
 
-This is *emphasis* and this is _strong_.
+function loadStorage(key) {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function saveStorage(key, value) {
+  try { localStorage.setItem(key, value); } catch { /* quota or unavailable */ }
+}
 
-- a list
-- with items
-
-\`\`\`python
-def hello():
-    print("hi")
-\`\`\`
-`;
+const initialDoc = loadStorage(STORAGE_DOC) ?? "";
+const initialTitle = loadStorage(STORAGE_TITLE) ?? "";
 
 const previewEl = document.getElementById("preview");
 const previewToggle = document.getElementById("toggle-preview");
@@ -30,6 +30,12 @@ const themeSelect = document.getElementById("theme-select");
 const titleInput = document.getElementById("title");
 const downloadBtn = document.getElementById("download");
 const shareBtn = document.getElementById("share");
+const clearBtn = document.getElementById("clear");
+
+titleInput.value = initialTitle;
+titleInput.addEventListener("input", () => {
+  saveStorage(STORAGE_TITLE, titleInput.value);
+});
 
 function renderPreview(text) {
   try {
@@ -45,6 +51,15 @@ const previewSync = EditorView.updateListener.of((update) => {
   }
 });
 
+let docSaveTimer = null;
+const persistDoc = EditorView.updateListener.of((update) => {
+  if (!update.docChanged) return;
+  if (docSaveTimer) clearTimeout(docSaveTimer);
+  docSaveTimer = setTimeout(() => {
+    saveStorage(STORAGE_DOC, update.state.doc.toString());
+  }, 300);
+});
+
 const editorTheme = EditorView.theme({
   ".cm-content": { padding: "16px 21px" },
 });
@@ -54,11 +69,12 @@ const wrapCompartment = new Compartment();
 const view = new EditorView({
   parent: document.getElementById("editor"),
   state: EditorState.create({
-    doc: startDoc,
+    doc: initialDoc,
     extensions: [
       history(),
       djotHighlight,
       previewSync,
+      persistDoc,
       editorTheme,
       wrapCompartment.of(wrapToggle.checked ? EditorView.lineWrapping : []),
       keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
@@ -109,6 +125,16 @@ function sanitizeFilename(title) {
     .replace(/^-+|-+$/g, "");
   return cleaned || "untitled";
 }
+
+clearBtn.addEventListener("click", () => {
+  titleInput.value = "";
+  saveStorage(STORAGE_TITLE, "");
+  view.dispatch({
+    changes: { from: 0, to: view.state.doc.length, insert: "" },
+  });
+  saveStorage(STORAGE_DOC, "");
+  window.history.replaceState(null, "", location.pathname + location.search);
+});
 
 downloadBtn.addEventListener("click", () => {
   const blob = new Blob([view.state.doc.toString()], { type: "text/plain;charset=utf-8" });
@@ -167,9 +193,11 @@ async function loadFromHash() {
     const plaintext = await loadShare(id, keyB64);
     const { title = "", content = "" } = JSON.parse(plaintext);
     titleInput.value = title;
+    saveStorage(STORAGE_TITLE, title);
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: content },
     });
+    saveStorage(STORAGE_DOC, content);
     window.history.replaceState(null, "", location.pathname + location.search);
   } catch (e) {
     console.error("load shared doc failed", e);
