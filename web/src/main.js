@@ -8,6 +8,7 @@ import { searchKeymap } from "@codemirror/search";
 import { parse, renderHTML } from "@djot/djot";
 import DOMPurify from "dompurify";
 import { djotHighlight } from "./djot-highlight.js";
+import { createShare, loadShare } from "./share.js";
 
 const startDoc = `# Hello Djot
 
@@ -28,6 +29,7 @@ const wrapToggle = document.getElementById("toggle-wrap");
 const themeSelect = document.getElementById("theme-select");
 const titleInput = document.getElementById("title");
 const downloadBtn = document.getElementById("download");
+const shareBtn = document.getElementById("share");
 
 function renderPreview(text) {
   try {
@@ -119,3 +121,59 @@ downloadBtn.addEventListener("click", () => {
   a.remove();
   URL.revokeObjectURL(url);
 });
+
+function flashButton(btn, label, ms = 1500) {
+  const original = btn.textContent;
+  btn.textContent = label;
+  btn.disabled = true;
+  setTimeout(() => {
+    btn.textContent = original;
+    btn.disabled = false;
+  }, ms);
+}
+
+shareBtn.addEventListener("click", async () => {
+  const original = shareBtn.textContent;
+  shareBtn.disabled = true;
+  shareBtn.textContent = "Sharing…";
+  try {
+    const payload = JSON.stringify({
+      title: titleInput.value,
+      content: view.state.doc.toString(),
+    });
+    const { id, keyB64 } = await createShare(payload);
+    const url = new URL(location.href);
+    url.hash = `s=${id}&k=${keyB64}`;
+    window.history.replaceState(null, "", url.toString());
+    await navigator.clipboard.writeText(url.toString());
+    shareBtn.textContent = original;
+    shareBtn.disabled = false;
+    flashButton(shareBtn, "Copied!");
+  } catch (e) {
+    console.error("share failed", e);
+    shareBtn.textContent = original;
+    shareBtn.disabled = false;
+    flashButton(shareBtn, "Failed");
+  }
+});
+
+async function loadFromHash() {
+  if (!location.hash) return;
+  const params = new URLSearchParams(location.hash.slice(1));
+  const id = params.get("s");
+  const keyB64 = params.get("k");
+  if (!id || !keyB64) return;
+  try {
+    const plaintext = await loadShare(id, keyB64);
+    const { title = "", content = "" } = JSON.parse(plaintext);
+    titleInput.value = title;
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: content },
+    });
+    window.history.replaceState(null, "", location.pathname + location.search);
+  } catch (e) {
+    console.error("load shared doc failed", e);
+  }
+}
+
+loadFromHash();
