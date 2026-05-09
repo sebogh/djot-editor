@@ -35,7 +35,7 @@ The intended production layout is a single Go binary running under systemd on `1
 2. **Copy the binary and the deploy templates to the VPS**:
 
    ```sh
-   scp zorto deploy/zorto.service deploy/nginx-zorto.conf <vps>:/tmp/
+   scp zorto deploy/zorto.service deploy/nginx-zorto.conf qibli.net:/tmp/
    ```
 
 3. **On the VPS, install the binary, user, data dir, and systemd unit**:
@@ -59,4 +59,4 @@ The intended production layout is a single Go binary running under systemd on `1
 
    The site is now live at `https://qibli.net/zorto/`.
 
-**Updates:** rebuild with `make backend`, `scp zorto <vps>:/tmp/`, then on the VPS `sudo install -m 755 /tmp/zorto /usr/local/bin/zorto && sudo systemctl restart zorto`.
+**Updates:** `make deploy` (rebuilds the binary, `scp`s it to `qibli.net:/tmp/`, then `ssh`s in to install it and restart the service).

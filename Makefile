@@ -1,4 +1,4 @@
-.PHONY: all frontend backend run clean
+.PHONY: all frontend backend run deploy clean
 
 all: backend
 
@@ -12,6 +12,10 @@ backend: frontend
 
 run: frontend
 	go run .
+
+deploy: backend
+	scp zorto qibli.net:/tmp/
+	ssh -t qibli.net 'sudo install -m 755 /tmp/zorto /usr/local/bin/zorto && sudo systemctl restart zorto'
 
 clean:
 	rm -rf web/dist zorto
