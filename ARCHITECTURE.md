@@ -2,7 +2,7 @@
 
 ## Overview
 
-djot-editor is a single-page editor for [Djot](https://djot.net/) source. The frontend runs in the browser; a small Go HTTP backend stores opaque encrypted payloads in SQLite to enable shareable links. Local working state (the in-progress document and title) is persisted to `localStorage` so the editor picks up where the user left off across browser sessions.
+zorto is a single-page editor for [Djot](https://djot.net/) source. The frontend runs in the browser; a small Go HTTP backend stores opaque encrypted payloads in SQLite to enable shareable links. Local working state (the in-progress document and title) is persisted to `localStorage` so the editor picks up where the user left off across browser sessions.
 
 ## Components
 
@@ -11,7 +11,7 @@ djot-editor is a single-page editor for [Djot](https://djot.net/) source. The fr
 
 ## Persistence
 
-- **Local** — `localStorage` keys `djot-editor:doc` and `djot-editor:title` hold the user's working copy. `theme` (legacy unprefixed key) holds the chosen color scheme.
+- **Local** — `localStorage` keys `zorto:doc` and `zorto:title` hold the user's working copy. `theme` (legacy unprefixed key) holds the chosen color scheme.
 - **Server** — table `shares(id, ciphertext, created_at)`. The server only sees opaque ciphertext; the AES-GCM IV is prepended to the ciphertext before base64url encoding.
 
 ## Sharing and the share fragment

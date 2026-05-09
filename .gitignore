@@ -1,7 +1,7 @@
 /.claude/settings.local.json
 /web/node_modules
 /web/.vite
-/djot-editor
+/zorto
 *.db
 *.db-journal
 *.db-wal

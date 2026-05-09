@@ -1,4 +1,4 @@
-# djot-editor
+# zorto
 
 A Confluence-like wiki where documents are authored directly in [Djot](https://djot.net/) with fast, precise syntax highlighting — no rendered HTML preview, just the source with colors.
 
@@ -15,8 +15,7 @@ npm run dev
 Backend (Go, serves the built frontend + `/api`):
 
 ```sh
-make build
-go run .
+make run
 ```
 
 Vite proxies `/api/*` to the Go server, so run both for the full app.

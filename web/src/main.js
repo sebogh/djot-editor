@@ -10,8 +10,8 @@ import DOMPurify from "dompurify";
 import { djotHighlight } from "./djot-highlight.js";
 import { createShare, loadShare } from "./share.js";
 
-const STORAGE_DOC = "djot-editor:doc";
-const STORAGE_TITLE = "djot-editor:title";
+const STORAGE_DOC = "zorto:doc";
+const STORAGE_TITLE = "zorto:title";
 
 function loadStorage(key) {
   try { return localStorage.getItem(key); } catch { return null; }

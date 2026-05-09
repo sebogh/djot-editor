@@ -1,4 +1,4 @@
-module github.com/sebogh/djot-editor
+module github.com/sebogh/zorto
 
 go 1.26
 

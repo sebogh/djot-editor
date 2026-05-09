@@ -1,16 +1,23 @@
 DEPLOY_HOST = qibli.net
-DEPLOY_PATH = /var/www/html/djot-editor
+DEPLOY_PATH = /var/www/html/zorto
 
-.PHONY: build server deploy clean
+.PHONY: all frontend backend run deploy clean
 
-build:
-	cd web && npm run build
+all: backend
 
-server: build
+frontend:
+	cd web && \
+	npm install && \
+	npm run build
+
+backend: frontend
+	go build .
+
+run: frontend
 	go run .
 
-deploy: build
+deploy: frontend
 	rsync -avz --delete web/dist/ $(DEPLOY_HOST):$(DEPLOY_PATH)/
 
 clean:
-	rm -rf web/dist djot-editor
+	rm -rf web/dist zorto

@@ -36,7 +36,7 @@ type shareGetResponse struct {
 
 func main() {
 	addr := flag.String("addr", ":8080", "listen address")
-	dbPath := flag.String("db", "djot-editor.db", "sqlite database path")
+	dbPath := flag.String("db", "zorto.db", "sqlite database path")
 	flag.Parse()
 
 	db, err := sql.Open("sqlite", *dbPath)
