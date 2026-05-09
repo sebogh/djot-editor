@@ -1,13 +1,16 @@
 DEPLOY_HOST = qibli.net
 DEPLOY_PATH = /var/www/html/djot-editor
 
-.PHONY: build deploy clean
+.PHONY: build server deploy clean
 
 build:
-	npm run build
+	cd web && npm run build
+
+server: build
+	go run .
 
 deploy: build
-	rsync -avz --delete dist/ $(DEPLOY_HOST):$(DEPLOY_PATH)/
+	rsync -avz --delete web/dist/ $(DEPLOY_HOST):$(DEPLOY_PATH)/
 
 clean:
-	rm -rf dist
+	rm -rf web/dist djot-editor

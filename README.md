@@ -4,12 +4,22 @@ A Confluence-like wiki where documents are authored directly in [Djot](https://d
 
 ## Develop
 
+Frontend dev server (Vite, with HMR):
+
 ```sh
+cd web
 npm install
-npx vite
+npm run dev
 ```
 
-Opens at http://localhost:5173.
+Backend (Go, serves the built frontend + `/api`):
+
+```sh
+make build
+go run .
+```
+
+Vite proxies `/api/*` to the Go server, so run both for the full app.
 
 ## Deploy
 
@@ -17,4 +27,4 @@ Opens at http://localhost:5173.
 make deploy
 ```
 
-Builds with Vite and rsyncs `dist/` to the host configured in the `Makefile` (`DEPLOY_HOST`, `DEPLOY_PATH`). Override on the command line if needed, e.g. `make deploy DEPLOY_HOST=staging.example.com`.
+Builds the frontend and rsyncs `web/dist/` to the host configured in the `Makefile` (`DEPLOY_HOST`, `DEPLOY_PATH`).

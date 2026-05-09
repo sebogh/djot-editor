@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Djot Editor</title>
+    <script type="module" crossorigin src="./assets/index-DZFyIh4f.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index--M2zfDtK.css">
+  </head>
+  <body>
+    <div id="toolbar">
+      <input id="title" type="text" placeholder="Untitled" aria-label="Document title" />
+      <div class="toolbar-actions">
+        <select id="theme-select" aria-label="Theme">
+          <option value="system">System</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+        <label>
+          <input id="toggle-wrap" type="checkbox" role="switch" checked />
+          Wrap
+        </label>
+        <label>
+          <input id="toggle-preview" type="checkbox" role="switch" />
+          Preview
+        </label>
+        <button id="download" type="button" class="outline">Download</button>
+      </div>
+    </div>
+    <div id="workspace">
+      <div id="editor"></div>
+      <div id="preview" hidden></div>
+    </div>
+  </body>
+</html>
