@@ -1,5 +1,6 @@
 /.claude/settings.local.json
 /web/node_modules
+/web/dist
 /web/.vite
 /zorto
 *.db

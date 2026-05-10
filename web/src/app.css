@@ -1,0 +1,264 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.5rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+
+  --djot-heading: #c026d3;
+  --djot-emph: #2563eb;
+  --djot-strong: #2563eb;
+  --djot-link: #0891b2;
+  --djot-code-fg: #be185d;
+  --djot-code-bg: #f3f4f6;
+  --djot-code-block-bg: #f9fafb;
+  --djot-code-block-fg: #334155;
+  --djot-blockquote: #6b7280;
+  --djot-hr: #9ca3af;
+  --djot-raw: #ea580c;
+  --djot-math: #7c3aed;
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 0.1);
+  --input: oklch(1 0 0 / 0.15);
+  --ring: oklch(0.556 0 0);
+
+  --djot-heading: #e879f9;
+  --djot-emph: #93c5fd;
+  --djot-strong: #93c5fd;
+  --djot-link: #67e8f9;
+  --djot-code-fg: #f9a8d4;
+  --djot-code-bg: #27272a;
+  --djot-code-block-bg: #18181b;
+  --djot-code-block-fg: #d4d4d8;
+  --djot-blockquote: #a1a1aa;
+  --djot-hr: #71717a;
+  --djot-raw: #fdba74;
+  --djot-math: #c4b5fd;
+}
+
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--border);
+  }
+  html,
+  body {
+    height: 100vh;
+    margin: 0;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+  }
+  #app {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+/* Djot syntax highlighting inside CodeMirror */
+.djot-heading {
+  color: var(--djot-heading);
+  font-weight: 700;
+}
+.djot-emph {
+  color: var(--djot-emph);
+  font-style: italic;
+}
+.djot-strong {
+  color: var(--djot-strong);
+  font-weight: 700;
+}
+.djot-link {
+  color: var(--djot-link);
+  text-decoration: underline;
+}
+.djot-url {
+  color: var(--djot-link);
+}
+.djot-code,
+.djot-verbatim {
+  background: var(--djot-code-bg);
+  color: var(--djot-code-fg);
+  padding: 0 2px;
+  border-radius: 2px;
+  font-family: ui-monospace, monospace;
+}
+.djot-code-block {
+  background: var(--djot-code-block-bg);
+  color: var(--djot-code-block-fg);
+}
+.djot-blockquote {
+  color: var(--djot-blockquote);
+  font-style: italic;
+}
+.djot-hr {
+  color: var(--djot-hr);
+}
+.djot-raw {
+  color: var(--djot-raw);
+}
+.djot-math {
+  color: var(--djot-math);
+}
+
+.cm-editor {
+  height: 100%;
+  font-size: 14px;
+  background: var(--background);
+  color: var(--foreground);
+}
+.cm-editor.cm-focused {
+  outline: none;
+}
+.cm-content {
+  caret-color: var(--foreground);
+  padding: 16px 21px;
+}
+.cm-cursor,
+.cm-dropCursor {
+  border-left: none;
+  background: var(--foreground);
+  width: 1ch;
+  opacity: 0.45;
+}
+
+.preview-prose h1,
+.preview-prose h2,
+.preview-prose h3,
+.preview-prose h4 {
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 1.25em 0 0.5em;
+}
+.preview-prose h1 {
+  font-size: 1.875rem;
+}
+.preview-prose h2 {
+  font-size: 1.5rem;
+}
+.preview-prose h3 {
+  font-size: 1.25rem;
+}
+.preview-prose h4 {
+  font-size: 1.05rem;
+}
+.preview-prose p {
+  margin: 0.75em 0;
+  line-height: 1.6;
+}
+.preview-prose a {
+  color: var(--djot-link);
+  text-decoration: underline;
+}
+.preview-prose ul,
+.preview-prose ol {
+  margin: 0.75em 0;
+  padding-left: 1.5em;
+}
+.preview-prose li {
+  margin: 0.25em 0;
+}
+.preview-prose blockquote {
+  margin: 0.75em 0;
+  padding-left: 1em;
+  border-left: 3px solid var(--border);
+  color: var(--muted-foreground);
+}
+.preview-prose code {
+  background: var(--djot-code-bg);
+  color: var(--djot-code-fg);
+  padding: 0 0.25em;
+  border-radius: 3px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.9em;
+}
+.preview-prose pre {
+  background: var(--djot-code-block-bg);
+  color: var(--djot-code-block-fg);
+  padding: 0.75em 1em;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 0.9em;
+}
+.preview-prose pre code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+}
+.preview-prose hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.5em 0;
+}
+.preview-prose img {
+  max-width: 100%;
+}

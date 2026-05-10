@@ -1,16 +1,14 @@
 {
   "name": "zorto",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "preview": "vite preview",
+    "check": "svelte-check --tsconfig ./tsconfig.json"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
     "@auth0/auth0-spa-js": "^2.19.2",
     "@codemirror/commands": "^6.10.3",
@@ -20,11 +18,21 @@
     "@codemirror/view": "^6.42.1",
     "@djot/djot": "^0.3.2",
     "@lezer/highlight": "^1.2.3",
-    "@picocss/pico": "^2.1.1",
+    "bits-ui": "^2.18.1",
+    "clsx": "^2.1.1",
     "codemirror": "^6.0.2",
-    "dompurify": "^3.4.2"
+    "dompurify": "^3.4.2",
+    "lucide-svelte": "^1.0.1",
+    "tailwind-merge": "^3.5.0",
+    "tailwind-variants": "^3.2.2"
   },
   "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "@tailwindcss/vite": "^4.3.0",
+    "svelte": "^5.55.5",
+    "svelte-check": "^4.4.8",
+    "tailwindcss": "^4.3.0",
+    "typescript": "^6.0.3",
     "vite": "^8.0.11"
   }
 }

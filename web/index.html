@@ -2,41 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Zorto</title>
   </head>
-  <body>
-    <div id="toolbar">
-      <input id="title" type="text" placeholder="Untitled" aria-label="Document title" />
-      <div class="toolbar-actions">
-        <select id="theme-select" aria-label="Theme">
-          <option value="system">System</option>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-        </select>
-        <label>
-          <input id="toggle-wrap" type="checkbox" role="switch" checked />
-          Wrap
-        </label>
-        <label>
-          <input id="toggle-preview" type="checkbox" role="switch" />
-          Preview
-        </label>
-        <button id="clear" type="button" class="outline">Clear</button>
-        <button id="share" type="button" class="outline">Share</button>
-        <button id="download" type="button" class="outline">Download</button>
-        <button id="auth-signin" type="button" class="outline" hidden>Sign in</button>
-        <details class="dropdown" id="auth-menu" hidden>
-          <summary id="auth-summary"></summary>
-          <ul>
-            <li><a href="#" id="auth-logout">Logout</a></li>
-          </ul>
-        </details>
-      </div>
-    </div>
-    <div id="workspace">
-      <div id="editor"></div>
-      <div id="preview" hidden></div>
-    </div>
-    <script type="module" src="/src/main.js"></script>
+  <body class="bg-background text-foreground antialiased">
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
