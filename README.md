@@ -1,3 +1,7 @@
+<div align="center">
+<img src="./web/public/z_logo_128x128.png" alt="zorto logo" width="128" height="128">
+</div>
+
 # zorto
 
 A Confluence-like wiki where documents are authored directly in [Djot](https://djot.net/) with fast, precise syntax highlighting — no rendered HTML preview, just the source with colors.
