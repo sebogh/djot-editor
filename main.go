@@ -1,3 +1,23 @@
+// Package main is the zorto HTTP server: a single binary that embeds the
+// built SPA, exposes a small JSON API, and (optionally) integrates Auth0 as
+// a confidential OAuth client.
+//
+// Routes:
+//
+//	GET  /api/healthz         — liveness probe
+//	GET  /api/config          — public feature flags consumed by the SPA
+//	GET  /api/auth/login      — start Auth0 PKCE flow                 (auth-on)
+//	GET  /api/auth/callback   — Auth0 redirects here after login      (auth-on)
+//	POST /api/auth/logout     — drop session cookie + DB row          (auth-on)
+//	GET  /api/me              — return the signed-in user's profile   (auth-on)
+//	GET  /api/state           — read this user's working state JSON   (auth-on)
+//	PUT  /api/state           — replace this user's working state     (auth-on)
+//	POST /api/shares          — create an end-to-end encrypted share  (auth-on + -share)
+//	GET  /api/shares/{id}     — fetch an opaque ciphertext blob       (always)
+//	GET  /…                   — embedded SPA assets
+//
+// Storage is SQLite via the modernc.org/sqlite pure-Go driver (no cgo). All
+// auth-related code lives in auth.go; this file owns the wiring.
 package main
 
 import (
@@ -17,22 +37,31 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// distFS holds the Vite-built SPA. The `all:` prefix tells embed to include
+// dotfiles too — needed because Vite emits `.vite/` metadata in some configs.
+//
 //go:embed all:web/dist
 var distFS embed.FS
 
+// Body-size caps for the two endpoints that accept arbitrary JSON. Both are
+// per-request limits; nothing in the schema enforces a per-user total.
 const (
 	maxShareBytes = 1 << 20 // 1 MB
 	maxStateBytes = 1 << 20 // 1 MB
 )
 
+// shareRequest is the body of POST /api/shares. The ciphertext is opaque to
+// the server; the AES-GCM key never leaves the SPA.
 type shareRequest struct {
 	Ciphertext string `json:"ciphertext"`
 }
 
+// shareIDResponse is the body of POST /api/shares on success.
 type shareIDResponse struct {
 	ID string `json:"id"`
 }
 
+// shareGetResponse is the body of GET /api/shares/{id} on success.
 type shareGetResponse struct {
 	Ciphertext string `json:"ciphertext"`
 }
@@ -62,6 +91,9 @@ func main() {
 		}
 	}
 
+	// Schema. Idempotent — existing tables are left in place. To migrate a
+	// schema change, drop the affected table out-of-band before restart;
+	// migrations are not implemented because the data is cheap to recreate.
 	for _, ddl := range []string{
 		`CREATE TABLE IF NOT EXISTS shares (
 			id         TEXT PRIMARY KEY,
@@ -246,8 +278,12 @@ func main() {
 	}
 }
 
+// newShareID returns a random 12-character base64url id used as the primary
+// key of the shares table. 9 random bytes give ~7e21 distinct values, which
+// is more than enough to make collisions a non-issue at this scale and keeps
+// the URL fragment short.
 func newShareID() (string, error) {
-	b := make([]byte, 9) // 12 chars in base64url, ~7e21 collision space
+	b := make([]byte, 9)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}

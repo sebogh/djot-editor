@@ -1,5 +1,13 @@
 package main
 
+// Logging plumbing for zorto. Three pieces live here:
+//
+//   - loggingMiddleware wraps every HTTP handler and emits one structured
+//     log line per request, with the status raised to Warn/Error for 4xx/5xx.
+//   - setupLogger / parseLogLevel configure the slog default handler from
+//     the -log-level flag.
+//   - clientIP / fatal are small utilities used by the rest of the binary.
+
 import (
 	"fmt"
 	"log/slog"

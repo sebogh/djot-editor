@@ -1,5 +1,25 @@
 package main
 
+// Auth0 integration as a Backend-for-Frontend (BFF). The Go server is a
+// confidential OAuth client: it runs the Authorization Code + PKCE flow,
+// exchanges codes (with the client secret) for tokens, validates the
+// id_token via the tenant's JWKS, and stores a server-side session keyed by
+// an opaque random id. The browser never sees any token — only the
+// HttpOnly `zorto_session` cookie.
+//
+// Lifecycle:
+//
+//	/api/auth/login     → create auth_states row, redirect to /authorize
+//	/api/auth/callback  → consume auth_states row, exchange code, create
+//	                      sessions row, set cookie, redirect to SPA root
+//	/api/auth/logout    → delete sessions row, clear cookie, return Auth0
+//	                      logout URL for the SPA to navigate to
+//	/api/me             → read cookie → sessions row → user profile JSON
+//
+// AUTH0_AUDIENCE is intentionally unused: identity-only login does not need
+// API access tokens. The validator's audience is therefore the client_id,
+// which is what Auth0 puts in id_token's `aud` claim.
+
 import (
 	"context"
 	"crypto/rand"
@@ -23,25 +43,36 @@ import (
 
 const (
 	sessionCookieName = "zorto_session"
-	sessionTTL        = 30 * 24 * time.Hour
-	authStateTTL      = 10 * time.Minute
+	sessionTTL        = 30 * 24 * time.Hour // rolling cookie + DB row lifetime
+	authStateTTL      = 10 * time.Minute    // max time between /login and /callback
 )
 
+// authConfig holds the four env-driven knobs the auth subsystem reads. All
+// three of Domain, ClientID and ClientSecret are required for auth to be
+// considered enabled (see [authConfig.enabled]). RedirectURI is optional and
+// only needed when the SPA is served behind a path-prefixed reverse proxy
+// (e.g. /zorto/) where the backend can't infer the prefix from the request.
 type authConfig struct {
 	Domain       string
 	ClientID     string
 	ClientSecret string
-	RedirectURI  string // optional override of the auto-derived callback URL
+	RedirectURI  string
 }
 
+// enabled reports whether all required env vars are set. When false, the
+// caller skips wiring up auth handlers entirely.
 func (a authConfig) enabled() bool {
 	return a.Domain != "" && a.ClientID != "" && a.ClientSecret != ""
 }
 
+// issuerURL returns the canonical Auth0 issuer (with trailing slash), used
+// both for OAuth endpoints and as the expected `iss` claim value.
 func (a authConfig) issuerURL() string {
 	return "https://" + strings.TrimSuffix(a.Domain, "/") + "/"
 }
 
+// loadAuthConfig reads the AUTH0_* env vars. No defaults — missing values
+// just disable auth.
 func loadAuthConfig() authConfig {
 	return authConfig{
 		Domain:       os.Getenv("AUTH0_DOMAIN"),
@@ -52,6 +83,8 @@ func loadAuthConfig() authConfig {
 }
 
 // idTokenClaims captures the OIDC profile fields we cache in the session row.
+// Implements validator.CustomClaims; Validate is a no-op because all fields
+// are advisory (the JWT library already enforces the registered claims).
 type idTokenClaims struct {
 	Name    string `json:"name"`
 	Email   string `json:"email"`
@@ -60,6 +93,9 @@ type idTokenClaims struct {
 
 func (c *idTokenClaims) Validate(_ context.Context) error { return nil }
 
+// authHandler bundles the per-process auth state: configuration, the DB
+// handle for sessions/auth_states, a JWKS-backed JWT validator, and an
+// HTTP client used to call Auth0's token endpoint.
 type authHandler struct {
 	cfg       authConfig
 	db        *sql.DB
@@ -67,6 +103,9 @@ type authHandler struct {
 	httpc     *http.Client
 }
 
+// newAuthHandler constructs a handler ready to serve the auth routes.
+// Returns an error if the configured issuer URL or validator can't be set
+// up. The returned handler caches Auth0's JWKS for 5 minutes.
 func newAuthHandler(cfg authConfig, db *sql.DB) (*authHandler, error) {
 	issuer, err := url.Parse(cfg.issuerURL())
 	if err != nil {
@@ -124,6 +163,9 @@ func (h *authHandler) resolveURIs(r *http.Request) (callback, spaRoot string) {
 	return
 }
 
+// randB64 returns n random bytes encoded as base64url without padding.
+// Used for session ids, OAuth state, and PKCE verifiers — anywhere we need
+// a URL-safe random token.
 func randB64(n int) (string, error) {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
@@ -132,6 +174,10 @@ func randB64(n int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
+// pkcePair returns a fresh (verifier, challenge) pair per RFC 7636 §4.2:
+// the verifier is a 32-byte random string and the challenge is its
+// SHA-256 hash, both base64url-encoded. The verifier is stored server-side
+// in auth_states; the challenge is sent to /authorize.
 func pkcePair() (verifier, challenge string, err error) {
 	verifier, err = randB64(32)
 	if err != nil {
@@ -142,6 +188,9 @@ func pkcePair() (verifier, challenge string, err error) {
 	return
 }
 
+// handleLogin starts the OAuth flow. It mints a fresh state + PKCE pair,
+// persists them in auth_states (so they survive a process restart between
+// /login and /callback), then redirects the user to Auth0's /authorize.
 func (h *authHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	state, err := randB64(24)
 	if err != nil {
@@ -173,6 +222,9 @@ func (h *authHandler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, h.cfg.issuerURL()+"authorize?"+q.Encode(), http.StatusFound)
 }
 
+// tokenResponse is the subset of Auth0's /oauth/token response that we use.
+// AccessToken is unused (zorto is OIDC-only) but parsed for completeness so a
+// debugger can inspect it.
 type tokenResponse struct {
 	AccessToken string `json:"access_token"`
 	IDToken     string `json:"id_token"`
@@ -180,6 +232,11 @@ type tokenResponse struct {
 	ExpiresIn   int    `json:"expires_in"`
 }
 
+// exchangeCode redeems the authorization code for tokens. It includes both
+// the client secret (because we are a confidential client) and the PKCE
+// verifier (defense in depth — Auth0 will compare its SHA-256 against the
+// challenge sent at /authorize). Response body is capped at 64 KiB; a
+// well-formed /oauth/token response is a few hundred bytes.
 func (h *authHandler) exchangeCode(ctx context.Context, code, verifier, redirectURI string) (*tokenResponse, error) {
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
@@ -214,6 +271,16 @@ func (h *authHandler) exchangeCode(ctx context.Context, code, verifier, redirect
 	return &tr, nil
 }
 
+// handleCallback completes the OAuth flow. Step by step:
+//  1. Look up and consume the auth_states row matching `state`.
+//  2. Refuse if the state is unknown, already used (deleted), or expired.
+//  3. Exchange the code (with the verifier + client secret) for an id_token.
+//  4. Validate the id_token: signature against JWKS, iss, aud (= client_id),
+//     exp. The CustomClaims hook also captures the OIDC profile.
+//  5. Mint a random session id, persist the profile, set the cookie, and
+//     redirect the user back to the SPA root.
+//
+// Errors are surfaced as 4xx/5xx; the SPA shows them as a generic failure.
 func (h *authHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	state := r.URL.Query().Get("state")
@@ -350,6 +417,10 @@ func (h *authHandler) sessionSub(r *http.Request) (string, bool) {
 	return sub, true
 }
 
+// handleMe returns the cached OIDC profile (sub, name, email, picture) for
+// the signed-in user. Has its own session lookup rather than reusing
+// sessionSub so it can return the user_json blob in one query, and so an
+// expired session is GC'd rather than just rejected.
 func (h *authHandler) handleMe(w http.ResponseWriter, r *http.Request) {
 	c, err := r.Cookie(sessionCookieName)
 	if err != nil || c.Value == "" {
@@ -380,6 +451,12 @@ func (h *authHandler) handleMe(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(userJSON))
 }
 
+// setSessionCookie writes the session cookie with the right hardening flags:
+//   - HttpOnly:  not readable from JS, so XSS can't exfiltrate it.
+//   - SameSite=Lax:  not sent on cross-site POSTs, but does ride along on
+//     top-level GET redirects (notably Auth0's redirect to /api/auth/callback).
+//   - Secure:  set only when the request arrived over TLS, so dev over plain
+//     HTTP still works while prod still gets the protection.
 func setSessionCookie(w http.ResponseWriter, r *http.Request, sid string, ttl time.Duration) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
@@ -404,6 +481,10 @@ func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// isSecureRequest reports whether the request reached us over HTTPS. Trusts
+// X-Forwarded-Proto because the Go server only listens on 127.0.0.1 in prod,
+// so the header is always set by the upstream nginx and can't be spoofed by
+// an external client.
 func isSecureRequest(r *http.Request) bool {
 	if r.TLS != nil {
 		return true
@@ -411,6 +492,10 @@ func isSecureRequest(r *http.Request) bool {
 	return r.Header.Get("X-Forwarded-Proto") == "https"
 }
 
+// cleanupExpired removes stale rows from auth_states and sessions. Called
+// once at startup; ongoing GC happens lazily on each /callback (auth_states)
+// and /me (sessions). A long-lived process accumulates abandoned rows
+// otherwise.
 func cleanupExpired(db *sql.DB) {
 	now := time.Now()
 	if _, err := db.Exec("DELETE FROM auth_states WHERE created_at < ?",

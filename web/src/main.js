@@ -1,3 +1,29 @@
+/**
+ * SPA entry point and orchestrator.
+ *
+ * Wires together the CodeMirror editor, the Djot preview, the toolbar,
+ * sharing, auth UI and the working-state persistence loop. Subsystems
+ * isolate the messy bits:
+ *   - `./auth.js`            session-cookie auth client
+ *   - `./share.js`           E2E-encrypted sharing
+ *   - `./djot-highlight.js`  CodeMirror plugin for Djot syntax classes
+ *
+ * Init sequence (see `init` at the bottom):
+ *   1. Fetch `/api/config` → discover share-flag and authEnabled.
+ *   2. If authEnabled, init the auth client which calls `/api/me`.
+ *   3. Refresh the auth UI (sign-in / avatar / share-button enablement).
+ *   4. If the URL has a share fragment, load + decrypt it.
+ *   5. Else, if signed in, load the user's working state from `/api/state`.
+ *   6. Else, leave the editor empty — there is no client-side persistence
+ *      for signed-out users.
+ *
+ * Persistence model (signed-in users only):
+ *   - Edits to title, doc, theme, wrap, or preview funnel through
+ *     `scheduleSave()`, which debounces 500 ms and PUTs the full state.
+ *   - Viewing a share never writes — only after the user starts editing
+ *     does `forkFromShare` strip the fragment and `scheduleSave` resume.
+ */
+
 import "@picocss/pico/css/pico.min.css";
 import "./styles.css";
 
@@ -13,24 +39,37 @@ import * as auth from "./auth.js";
 
 // Working state and UI settings now live server-side in /api/state for signed-in
 // users; for signed-out users nothing is persisted across reloads. Drop legacy
-// localStorage keys so old browsers don't carry stale drafts.
+// localStorage keys so old browsers don't carry stale drafts from earlier
+// versions of zorto that used localStorage.
 try {
   localStorage.removeItem("zorto:doc");
   localStorage.removeItem("zorto:title");
   localStorage.removeItem("theme");
-} catch { /* unavailable */ }
+} catch { /* unavailable, e.g. private browsing */ }
 
+/** Defaults applied at startup and as the floor when /api/state is sparse. */
 const SETTINGS_DEFAULTS = Object.freeze({
   theme: "system",
   wrap: true,
   preview: false,
 });
 
+// Annotations that mark editor transactions originating from a share or
+// state load, so the persistDoc updateListener doesn't treat the resulting
+// doc change as a user edit and trigger a save loop.
 const FromShareLoad = Annotation.define();
 const FromStateLoad = Annotation.define();
 
+// linkedToShare:    the editor currently mirrors a share-by-link payload.
+//                   Edits in this state fork (clear the URL fragment) before
+//                   any save can take effect.
+// loadingState:     re-entrancy guard for applyState — suppresses saves
+//                   while we're populating the UI from /api/state.
+// saveTimer:        active setTimeout id for the debounced save; null when
+//                   there is no pending save.
+// serverShareEnabled: cached value from /api/config (the -share server flag).
 let linkedToShare = false;
-let loadingState = false; // suppress saves while populating UI from /api/state
+let loadingState = false;
 let saveTimer = null;
 let serverShareEnabled = false;
 
@@ -52,6 +91,10 @@ wrapToggle.checked = SETTINGS_DEFAULTS.wrap;
 previewToggle.checked = SETTINGS_DEFAULTS.preview;
 applyTheme(SETTINGS_DEFAULTS.theme);
 
+/**
+ * Set the page colour scheme. "system" lets Pico.css follow the OS pref.
+ * @param {"system"|"light"|"dark"} theme
+ */
 function applyTheme(theme) {
   if (theme === "system") {
     document.documentElement.removeAttribute("data-theme");
@@ -60,6 +103,12 @@ function applyTheme(theme) {
   }
 }
 
+/**
+ * Render `text` as HTML via Djot and inject it into the preview pane.
+ * DOMPurify strips any unsafe constructs the renderer might emit.
+ * Parse errors are swallowed so a transient mid-edit failure doesn't blank
+ * the preview — the previous render stays visible.
+ */
 function renderPreview(text) {
   try {
     previewEl.innerHTML = DOMPurify.sanitize(renderHTML(parse(text)));
@@ -68,12 +117,18 @@ function renderPreview(text) {
   }
 }
 
+// Re-render the live preview whenever the doc changes (and the preview is
+// visible). Cheap: Djot's parser handles editor-sized docs comfortably.
 const previewSync = EditorView.updateListener.of((update) => {
   if (update.docChanged && !previewEl.hidden) {
     renderPreview(update.state.doc.toString());
   }
 });
 
+// Translate user-driven doc changes into save signals. Loads from share or
+// /api/state carry an annotation so they're skipped here. If the editor was
+// mirroring a share, the first edit forks first (clears the URL fragment)
+// before we queue a save.
 const persistDoc = EditorView.updateListener.of((update) => {
   if (!update.docChanged) return;
   if (update.transactions.some((tr) =>
@@ -93,6 +148,9 @@ const editorTheme = EditorView.theme({
   },
 });
 
+// Compartment lets us reconfigure line wrapping at runtime without
+// rebuilding the whole editor state. Toggled by the Wrap switch and on
+// state load.
 const wrapCompartment = new Compartment();
 
 const view = new EditorView({
@@ -144,6 +202,11 @@ themeSelect.addEventListener("change", () => {
   scheduleSave();
 });
 
+/**
+ * Convert a freeform title into a safe filename stem: collapse whitespace
+ * to dashes, strip characters that are illegal on common filesystems, trim
+ * leading/trailing dashes. Falls back to "untitled" for empty input.
+ */
 function sanitizeFilename(title) {
   const cleaned = (title || "")
     .trim()
@@ -175,6 +238,10 @@ downloadBtn.addEventListener("click", () => {
   URL.revokeObjectURL(url);
 });
 
+/**
+ * Briefly replace a button's label (e.g. "Copied!" / "Failed") and disable
+ * it, then restore. Used to give async actions a visible acknowledgement.
+ */
 function flashButton(btn, label, ms = 1500) {
   const original = btn.textContent;
   btn.textContent = label;
@@ -211,6 +278,16 @@ shareBtn.addEventListener("click", async () => {
   }
 });
 
+/**
+ * If the URL fragment looks like `#s=<id>&k=<key>`, fetch and decrypt the
+ * referenced share into the editor and mark the editor as `linkedToShare`.
+ *
+ * Returns whether a share was loaded — the caller uses this to decide
+ * whether to fall through to /api/state.
+ *
+ * Failures (bad id, missing share, decryption error) log to console and
+ * return false; the user lands on an empty editor in that case.
+ */
 async function loadFromHash() {
   if (!location.hash) return false;
   const params = new URLSearchParams(location.hash.slice(1));
@@ -233,15 +310,30 @@ async function loadFromHash() {
   }
 }
 
+/**
+ * Detach the editor from the share that populated it. Called from the first
+ * user edit while `linkedToShare` is true. The URL fragment is stripped (so
+ * the address bar reflects the user's own copy) and a save is queued — but
+ * `saveState` is a no-op when the user is signed out, so for unauthenticated
+ * sessions the fork is purely a UI concern.
+ */
 function forkFromShare() {
   if (!linkedToShare) return;
   linkedToShare = false;
   window.history.replaceState(null, "", location.pathname + location.search);
-  // The user is now editing their own copy; queue a save so a reload
-  // doesn't restore the pre-share state. saveState is a no-op when signed out.
   scheduleSave();
 }
 
+/**
+ * Populate the UI from the state object returned by `/api/state`.
+ *
+ * The async window between editor mount and state arrival is short (sub-100ms
+ * typically) but if the user starts typing during that window we'd otherwise
+ * clobber their work. The pristine guard skips the apply in that case —
+ * better to lose the saved state once than to lose the user's typing.
+ *
+ * @param {{title?: string, doc?: string, settings?: object}} state
+ */
 function applyState(state) {
   // If the user has already typed during the async load window, don't clobber.
   const pristine = view.state.doc.length === 0 && titleInput.value === "";
@@ -275,6 +367,10 @@ function applyState(state) {
   }
 }
 
+/**
+ * GET /api/state and apply the result. Errors are non-fatal — the user just
+ * sees an empty editor.
+ */
 async function loadUserState() {
   try {
     const res = await fetch("./api/state", { credentials: "same-origin" });
@@ -286,6 +382,7 @@ async function loadUserState() {
   }
 }
 
+/** Snapshot the editor + UI state into the JSON shape /api/state expects. */
 function currentStatePayload() {
   return {
     title: titleInput.value,
@@ -298,9 +395,19 @@ function currentStatePayload() {
   };
 }
 
+/**
+ * PUT the current state to the backend. No-op when:
+ *   - we're inside applyState (loadingState),
+ *   - the editor is mirroring a share (linkedToShare),
+ *   - auth is disabled, or
+ *   - the user is signed out.
+ *
+ * That last case is *the* mechanism by which signed-out users get no
+ * persistence — every save path eventually goes through here.
+ */
 async function saveState() {
   if (loadingState) return;
-  if (linkedToShare) return; // viewing someone else's share — not our state
+  if (linkedToShare) return;
   if (!auth.isEnabled()) return;
   if (!(await auth.isAuthenticated())) return;
   try {
@@ -315,6 +422,7 @@ async function saveState() {
   }
 }
 
+/** Coalesce many rapid changes into a single save 500 ms after the last one. */
 function scheduleSave() {
   if (loadingState) return;
   if (saveTimer) clearTimeout(saveTimer);
@@ -324,6 +432,8 @@ function scheduleSave() {
   }, 500);
 }
 
+/** Cancel any pending debounced save and write immediately. Used by Clear
+ *  and after forking from a share, where waiting 500 ms could race a reload. */
 function flushSave() {
   if (saveTimer) {
     clearTimeout(saveTimer);
@@ -332,6 +442,11 @@ function flushSave() {
   saveState();
 }
 
+/**
+ * Sharing requires both the server `-share` flag *and* a signed-in user.
+ * This function reflects those two preconditions on the Share button and
+ * its tooltip.
+ */
 async function updateShareButton() {
   const signedIn = auth.isEnabled() && (await auth.isAuthenticated());
   if (!serverShareEnabled) {
@@ -346,6 +461,13 @@ async function updateShareButton() {
   }
 }
 
+/**
+ * Reflect the current auth state in the toolbar:
+ *   - signed out → show Sign-in button, hide avatar dropdown
+ *   - signed in  → swap to the avatar dropdown showing name/email/picture
+ *
+ * Also refreshes the share button via updateShareButton.
+ */
 async function refreshAuthUI() {
   await updateShareButton();
   if (!auth.isEnabled()) return;
@@ -382,7 +504,13 @@ document.addEventListener("click", (e) => {
   if (authMenu.open && !authMenu.contains(e.target)) authMenu.open = false;
 });
 
+/**
+ * Top-level startup. Strictly serialised (no overlapping work) because the
+ * editor's contents depend on which path we take in step 4–5.
+ */
 async function init() {
+  // 1. Read the public feature flags. A failure here only loses the auth
+  //    integration; the editor still works for ephemeral local editing.
   let config = {};
   try {
     const res = await fetch("./api/config");
@@ -391,11 +519,18 @@ async function init() {
     console.error("fetch config failed", e);
   }
   serverShareEnabled = config.shareEnabled === true;
+
+  // 2. Initialise auth (which itself calls /api/me to populate cachedUser).
   if (config.authEnabled) {
     await auth.initAuth(config);
   }
+
+  // 3. Reflect what we now know in the toolbar.
   await refreshAuthUI();
 
+  // 4-6. Decide what to put in the editor. A share link wins over personal
+  //      state — the user explicitly asked to view that share by visiting
+  //      the link.
   const loadedFromShare = await loadFromHash();
   if (!loadedFromShare && auth.isEnabled() && (await auth.isAuthenticated())) {
     await loadUserState();
