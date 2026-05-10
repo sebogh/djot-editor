@@ -20,6 +20,10 @@ make run
 
 Vite proxies `/api/*` to the Go server, so run both for the full app.
 
+## Optional login (Auth0)
+
+Login is opt-in. If `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, and `AUTH0_AUDIENCE` are set on the backend, a **Login** button appears in the toolbar and the backend exposes `/api/me`. With the env vars unset, the app behaves exactly as before. See [AUTH.md](./AUTH.md) for the Auth0 tenant setup.
+
 ## Deploy to a VPS (manual install behind Nginx)
 
 The intended production layout is a single Go binary running under systemd on `127.0.0.1:8080`, fronted by an existing Nginx that already serves other sites. The site is mounted at the path `/zorto/`.

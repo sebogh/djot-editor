@@ -11,6 +11,10 @@ backend: frontend
 	go build .
 
 run: frontend
+	export AUTH0_DOMAIN=qibli.eu.auth0.com                                                                                                  export AUTH0_CLIENT_ID=BSkEg9dGo0HrrOyuILxZRPREmOuLFLOq
+	export AUTH0_AUDIENCE=https://qibli.net
+	
+
 	go run .
 
 deploy: backend

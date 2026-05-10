@@ -72,6 +72,80 @@ body {
   gap: 12px;
 }
 
+#toolbar #auth-menu {
+  margin-bottom: 0;
+}
+
+#toolbar #auth-menu > summary {
+  list-style: none;
+  padding: 0;
+  border: none;
+  background: none;
+  height: auto;
+  width: auto;
+  line-height: 0;
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+#toolbar #auth-menu > summary::after {
+  display: none;
+}
+
+#toolbar #auth-menu > summary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--pico-primary-focus);
+}
+
+#toolbar #auth-menu .avatar {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--pico-primary);
+  background: var(--pico-background-color);
+  box-sizing: border-box;
+  transition: border-color var(--pico-transition);
+}
+
+#toolbar #auth-menu > summary:hover .avatar,
+#toolbar #auth-menu[open] .avatar {
+  border-color: var(--pico-primary-hover);
+}
+
+#toolbar #auth-menu > summary + ul {
+  left: auto;
+  right: 0;
+  min-width: 9rem;
+  margin-top: 6px;
+  padding: 4px;
+  border: 1px solid var(--pico-primary);
+  border-radius: var(--pico-border-radius);
+  background: var(--pico-background-color);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+}
+
+#toolbar #auth-menu > summary + ul li {
+  padding: 0;
+  margin: 0;
+}
+
+#toolbar #auth-menu > summary + ul li a {
+  display: block;
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: calc(var(--pico-border-radius) - 1px);
+  color: var(--pico-color);
+  text-decoration: none;
+}
+
+#toolbar #auth-menu > summary + ul li a:hover,
+#toolbar #auth-menu > summary + ul li a:focus {
+  background: var(--pico-primary);
+  color: var(--pico-primary-inverse);
+  outline: none;
+}
+
 #toolbar select,
 #toolbar label,
 #toolbar input,

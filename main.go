@@ -10,7 +10,7 @@ import (
 	"flag"
 	"io"
 	"io/fs"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -38,11 +38,14 @@ func main() {
 	addr := flag.String("addr", ":8080", "listen address")
 	dbPath := flag.String("db", "zorto.db", "sqlite database path")
 	share := flag.Bool("share", false, "allow creating new shares")
+	logLevel := flag.String("log-level", "debug", "log level (debug, info, warn, error)")
 	flag.Parse()
+
+	setupLogger(*logLevel)
 
 	db, err := sql.Open("sqlite", *dbPath)
 	if err != nil {
-		log.Fatalf("sql.Open: %v", err)
+		fatal("sql.Open", "err", err)
 	}
 	defer db.Close()
 
@@ -52,7 +55,7 @@ func main() {
 		"PRAGMA foreign_keys=ON",
 	} {
 		if _, err := db.Exec(pragma); err != nil {
-			log.Fatalf("pragma %q: %v", pragma, err)
+			fatal("pragma", "pragma", pragma, "err", err)
 		}
 	}
 
@@ -61,12 +64,25 @@ func main() {
 		ciphertext TEXT NOT NULL,
 		created_at INTEGER NOT NULL
 	)`); err != nil {
-		log.Fatalf("schema: %v", err)
+		fatal("schema", "err", err)
 	}
 
 	dist, err := fs.Sub(distFS, "web/dist")
 	if err != nil {
-		log.Fatalf("embed: %v", err)
+		fatal("embed", "err", err)
+	}
+
+	authCfg := loadAuthConfig()
+	var tv *tokenValidator
+	if authCfg.enabled() {
+		var err error
+		tv, err = newTokenValidator(authCfg)
+		if err != nil {
+			fatal("auth", "err", err)
+		}
+		slog.Info("auth enabled", "domain", authCfg.Domain, "audience", authCfg.Audience)
+	} else {
+		slog.Info("auth disabled (set AUTH0_DOMAIN, AUTH0_CLIENT_ID, AUTH0_AUDIENCE to enable)")
 	}
 
 	mux := http.NewServeMux()
@@ -76,8 +92,19 @@ func main() {
 	})
 	mux.HandleFunc("GET /api/config", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]bool{"shareEnabled": *share})
+		resp := map[string]any{"shareEnabled": *share}
+		if authCfg.enabled() {
+			resp["auth"] = map[string]string{
+				"domain":   authCfg.Domain,
+				"clientId": authCfg.ClientID,
+				"audience": authCfg.Audience,
+			}
+		}
+		_ = json.NewEncoder(w).Encode(resp)
 	})
+	if tv != nil {
+		mux.Handle("GET /api/me", tv.authenticate(http.HandlerFunc(handleMe)))
+	}
 	mux.HandleFunc("POST /api/shares", func(w http.ResponseWriter, r *http.Request) {
 		if !*share {
 			http.Error(w, "sharing is disabled", http.StatusForbidden)
@@ -133,9 +160,9 @@ func main() {
 	})
 	mux.Handle("/", http.FileServer(http.FS(dist)))
 
-	log.Printf("listening on %s", *addr)
-	if err := http.ListenAndServe(*addr, mux); err != nil {
-		log.Fatal(err)
+	slog.Info("listening", "addr", *addr)
+	if err := http.ListenAndServe(*addr, loggingMiddleware(mux)); err != nil {
+		fatal("listen", "err", err)
 	}
 }
 

@@ -8,6 +8,7 @@ zorto is a single-page editor for [Djot](https://djot.net/) source. The frontend
 
 - **Frontend** (`web/`) — Vite-built SPA. CodeMirror 6 with a custom Djot highlighter, `@djot/djot` for AST + HTML preview, Pico.css for chrome.
 - **Backend** (`main.go`) — `net/http` server. Embeds the built frontend via `embed.FS`. Exposes `/api/shares` (POST + GET-by-id). Stores opaque ciphertext in SQLite via `modernc.org/sqlite` (pure-Go driver).
+- **Auth (optional)** (`auth.go`) — when `AUTH0_DOMAIN`/`AUTH0_CLIENT_ID`/`AUTH0_AUDIENCE` are set, validates Auth0 RS256 access tokens against the tenant JWKS and exposes `/api/me`. Login is **identity-only**: the share endpoints remain anonymous and the E2E model below is unchanged. See [AUTH.md](./AUTH.md).
 
 ## Persistence
 

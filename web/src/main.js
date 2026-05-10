@@ -9,6 +9,7 @@ import { parse, renderHTML } from "@djot/djot";
 import DOMPurify from "dompurify";
 import { djotHighlight } from "./djot-highlight.js";
 import { createShare, loadShare } from "./share.js";
+import * as auth from "./auth.js";
 
 const STORAGE_DOC = "zorto:doc";
 const STORAGE_TITLE = "zorto:title";
@@ -228,6 +229,46 @@ async function loadFromHash() {
   }
 }
 
+const signinBtn = document.getElementById("auth-signin");
+const authMenu = document.getElementById("auth-menu");
+const authSummary = document.getElementById("auth-summary");
+const logoutAction = document.getElementById("auth-logout");
+
+async function refreshAuthUI() {
+  if (!auth.isEnabled()) return;
+  const signedIn = await auth.isAuthenticated();
+  if (signedIn) {
+    signinBtn.hidden = true;
+    authMenu.hidden = false;
+    const user = await auth.getUser();
+    const name = user?.name || user?.email || "Account";
+    const src = user?.picture || await auth.identiconDataUrl(user?.sub || name);
+    authSummary.replaceChildren();
+    authSummary.title = name;
+    authSummary.setAttribute("aria-label", name);
+    const img = document.createElement("img");
+    img.className = "avatar";
+    img.src = src;
+    img.alt = "";
+    authSummary.appendChild(img);
+  } else {
+    authMenu.hidden = true;
+    authMenu.open = false;
+    signinBtn.hidden = false;
+  }
+}
+
+signinBtn.addEventListener("click", () => auth.login());
+logoutAction.addEventListener("click", (e) => {
+  e.preventDefault();
+  authMenu.open = false;
+  auth.logout();
+});
+
+document.addEventListener("click", (e) => {
+  if (authMenu.open && !authMenu.contains(e.target)) authMenu.open = false;
+});
+
 async function applyServerConfig() {
   try {
     const res = await fetch("./api/config");
@@ -237,8 +278,12 @@ async function applyServerConfig() {
       shareBtn.disabled = true;
       shareBtn.title = "Sharing is disabled on this server";
     }
-  } catch {
-    /* backend unreachable; leave button as-is */
+    if (config.auth) {
+      await auth.initAuth(config);
+      await refreshAuthUI();
+    }
+  } catch (e) {
+    console.error("applyServerConfig failed", e);
   }
 }
 
