@@ -11,7 +11,7 @@ backend: frontend
 	go build .
 
 run: frontend
-	go run .
+	go run . --share=true
 
 deploy: backend
 	scp zorto qibli.net:/tmp/

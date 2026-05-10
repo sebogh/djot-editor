@@ -11,29 +11,28 @@ import { djotHighlight } from "./djot-highlight.js";
 import { createShare, loadShare } from "./share.js";
 import * as auth from "./auth.js";
 
-const STORAGE_DOC = "zorto:doc";
-const STORAGE_TITLE = "zorto:title";
+// Working state and UI settings now live server-side in /api/state for signed-in
+// users; for signed-out users nothing is persisted across reloads. Drop legacy
+// localStorage keys so old browsers don't carry stale drafts.
+try {
+  localStorage.removeItem("zorto:doc");
+  localStorage.removeItem("zorto:title");
+  localStorage.removeItem("theme");
+} catch { /* unavailable */ }
 
-function loadStorage(key) {
-  try { return localStorage.getItem(key); } catch { return null; }
-}
-function saveStorage(key, value) {
-  try { localStorage.setItem(key, value); } catch { /* quota or unavailable */ }
-}
-
-const initialDoc = loadStorage(STORAGE_DOC) ?? "";
-const initialTitle = loadStorage(STORAGE_TITLE) ?? "";
+const SETTINGS_DEFAULTS = Object.freeze({
+  theme: "system",
+  wrap: true,
+  preview: false,
+});
 
 const FromShareLoad = Annotation.define();
-let linkedToShare = false;
+const FromStateLoad = Annotation.define();
 
-function forkFromShare() {
-  if (!linkedToShare) return;
-  linkedToShare = false;
-  window.history.replaceState(null, "", location.pathname + location.search);
-  saveStorage(STORAGE_TITLE, titleInput.value);
-  saveStorage(STORAGE_DOC, view.state.doc.toString());
-}
+let linkedToShare = false;
+let loadingState = false; // suppress saves while populating UI from /api/state
+let saveTimer = null;
+let serverShareEnabled = false;
 
 const previewEl = document.getElementById("preview");
 const previewToggle = document.getElementById("toggle-preview");
@@ -43,12 +42,23 @@ const titleInput = document.getElementById("title");
 const downloadBtn = document.getElementById("download");
 const shareBtn = document.getElementById("share");
 const clearBtn = document.getElementById("clear");
+const signinBtn = document.getElementById("auth-signin");
+const authMenu = document.getElementById("auth-menu");
+const authSummary = document.getElementById("auth-summary");
+const logoutAction = document.getElementById("auth-logout");
 
-titleInput.value = initialTitle;
-titleInput.addEventListener("input", () => {
-  if (linkedToShare) forkFromShare();
-  saveStorage(STORAGE_TITLE, titleInput.value);
-});
+themeSelect.value = SETTINGS_DEFAULTS.theme;
+wrapToggle.checked = SETTINGS_DEFAULTS.wrap;
+previewToggle.checked = SETTINGS_DEFAULTS.preview;
+applyTheme(SETTINGS_DEFAULTS.theme);
+
+function applyTheme(theme) {
+  if (theme === "system") {
+    document.documentElement.removeAttribute("data-theme");
+  } else {
+    document.documentElement.setAttribute("data-theme", theme);
+  }
+}
 
 function renderPreview(text) {
   try {
@@ -64,15 +74,13 @@ const previewSync = EditorView.updateListener.of((update) => {
   }
 });
 
-let docSaveTimer = null;
 const persistDoc = EditorView.updateListener.of((update) => {
   if (!update.docChanged) return;
-  if (update.transactions.some((tr) => tr.annotation(FromShareLoad))) return;
+  if (update.transactions.some((tr) =>
+    tr.annotation(FromShareLoad) || tr.annotation(FromStateLoad)
+  )) return;
   if (linkedToShare) forkFromShare();
-  if (docSaveTimer) clearTimeout(docSaveTimer);
-  docSaveTimer = setTimeout(() => {
-    saveStorage(STORAGE_DOC, update.state.doc.toString());
-  }, 300);
+  scheduleSave();
 });
 
 const editorTheme = EditorView.theme({
@@ -90,7 +98,7 @@ const wrapCompartment = new Compartment();
 const view = new EditorView({
   parent: document.getElementById("editor"),
   state: EditorState.create({
-    doc: initialDoc,
+    doc: "",
     extensions: [
       history(),
       drawSelection(),
@@ -106,12 +114,18 @@ const view = new EditorView({
 
 view.focus();
 
+titleInput.addEventListener("input", () => {
+  if (linkedToShare) forkFromShare();
+  scheduleSave();
+});
+
 wrapToggle.addEventListener("change", () => {
   view.dispatch({
     effects: wrapCompartment.reconfigure(
       wrapToggle.checked ? EditorView.lineWrapping : []
     ),
   });
+  scheduleSave();
 });
 
 previewToggle.addEventListener("change", () => {
@@ -122,23 +136,12 @@ previewToggle.addEventListener("change", () => {
     previewEl.hidden = true;
   }
   view.requestMeasure();
+  scheduleSave();
 });
 
-function applyTheme(theme) {
-  if (theme === "system") {
-    document.documentElement.removeAttribute("data-theme");
-  } else {
-    document.documentElement.setAttribute("data-theme", theme);
-  }
-}
-
-const savedTheme = localStorage.getItem("theme") || "system";
-themeSelect.value = savedTheme;
-applyTheme(savedTheme);
-
 themeSelect.addEventListener("change", () => {
-  localStorage.setItem("theme", themeSelect.value);
   applyTheme(themeSelect.value);
+  scheduleSave();
 });
 
 function sanitizeFilename(title) {
@@ -153,12 +156,11 @@ function sanitizeFilename(title) {
 clearBtn.addEventListener("click", () => {
   linkedToShare = false;
   titleInput.value = "";
-  saveStorage(STORAGE_TITLE, "");
   view.dispatch({
     changes: { from: 0, to: view.state.doc.length, insert: "" },
   });
-  saveStorage(STORAGE_DOC, "");
   window.history.replaceState(null, "", location.pathname + location.search);
+  flushSave();
 });
 
 downloadBtn.addEventListener("click", () => {
@@ -210,11 +212,11 @@ shareBtn.addEventListener("click", async () => {
 });
 
 async function loadFromHash() {
-  if (!location.hash) return;
+  if (!location.hash) return false;
   const params = new URLSearchParams(location.hash.slice(1));
   const id = params.get("s");
   const keyB64 = params.get("k");
-  if (!id || !keyB64) return;
+  if (!id || !keyB64) return false;
   try {
     const plaintext = await loadShare(id, keyB64);
     const { title = "", content = "" } = JSON.parse(plaintext);
@@ -224,17 +226,128 @@ async function loadFromHash() {
       changes: { from: 0, to: view.state.doc.length, insert: content },
       annotations: FromShareLoad.of(true),
     });
+    return true;
   } catch (e) {
     console.error("load shared doc failed", e);
+    return false;
   }
 }
 
-const signinBtn = document.getElementById("auth-signin");
-const authMenu = document.getElementById("auth-menu");
-const authSummary = document.getElementById("auth-summary");
-const logoutAction = document.getElementById("auth-logout");
+function forkFromShare() {
+  if (!linkedToShare) return;
+  linkedToShare = false;
+  window.history.replaceState(null, "", location.pathname + location.search);
+  // The user is now editing their own copy; queue a save so a reload
+  // doesn't restore the pre-share state. saveState is a no-op when signed out.
+  scheduleSave();
+}
+
+function applyState(state) {
+  // If the user has already typed during the async load window, don't clobber.
+  const pristine = view.state.doc.length === 0 && titleInput.value === "";
+  if (!pristine) return;
+
+  loadingState = true;
+  try {
+    titleInput.value = state.title || "";
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: state.doc || "" },
+      annotations: FromStateLoad.of(true),
+    });
+    const settings = { ...SETTINGS_DEFAULTS, ...(state.settings || {}) };
+    themeSelect.value = settings.theme;
+    applyTheme(settings.theme);
+    if (wrapToggle.checked !== !!settings.wrap) {
+      wrapToggle.checked = !!settings.wrap;
+      view.dispatch({
+        effects: wrapCompartment.reconfigure(
+          wrapToggle.checked ? EditorView.lineWrapping : []
+        ),
+      });
+    }
+    const wantPreview = !!settings.preview;
+    previewToggle.checked = wantPreview;
+    previewEl.hidden = !wantPreview;
+    if (wantPreview) renderPreview(view.state.doc.toString());
+    view.requestMeasure();
+  } finally {
+    loadingState = false;
+  }
+}
+
+async function loadUserState() {
+  try {
+    const res = await fetch("./api/state", { credentials: "same-origin" });
+    if (!res.ok) return;
+    const state = await res.json();
+    applyState(state);
+  } catch (e) {
+    console.error("load state failed", e);
+  }
+}
+
+function currentStatePayload() {
+  return {
+    title: titleInput.value,
+    doc: view.state.doc.toString(),
+    settings: {
+      theme: themeSelect.value,
+      wrap: !!wrapToggle.checked,
+      preview: !!previewToggle.checked,
+    },
+  };
+}
+
+async function saveState() {
+  if (loadingState) return;
+  if (linkedToShare) return; // viewing someone else's share — not our state
+  if (!auth.isEnabled()) return;
+  if (!(await auth.isAuthenticated())) return;
+  try {
+    await fetch("./api/state", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(currentStatePayload()),
+      credentials: "same-origin",
+    });
+  } catch (e) {
+    console.error("save state failed", e);
+  }
+}
+
+function scheduleSave() {
+  if (loadingState) return;
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    saveState();
+  }, 500);
+}
+
+function flushSave() {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  saveState();
+}
+
+async function updateShareButton() {
+  const signedIn = auth.isEnabled() && (await auth.isAuthenticated());
+  if (!serverShareEnabled) {
+    shareBtn.disabled = true;
+    shareBtn.title = "Sharing is disabled on this server";
+  } else if (!signedIn) {
+    shareBtn.disabled = true;
+    shareBtn.title = "Sign in to share";
+  } else {
+    shareBtn.disabled = false;
+    shareBtn.title = "";
+  }
+}
 
 async function refreshAuthUI() {
+  await updateShareButton();
   if (!auth.isEnabled()) return;
   const signedIn = await auth.isAuthenticated();
   if (signedIn) {
@@ -269,23 +382,24 @@ document.addEventListener("click", (e) => {
   if (authMenu.open && !authMenu.contains(e.target)) authMenu.open = false;
 });
 
-async function applyServerConfig() {
+async function init() {
+  let config = {};
   try {
     const res = await fetch("./api/config");
-    if (!res.ok) return;
-    const config = await res.json();
-    if (config.shareEnabled === false) {
-      shareBtn.disabled = true;
-      shareBtn.title = "Sharing is disabled on this server";
-    }
-    if (config.authEnabled) {
-      await auth.initAuth(config);
-      await refreshAuthUI();
-    }
+    if (res.ok) config = await res.json();
   } catch (e) {
-    console.error("applyServerConfig failed", e);
+    console.error("fetch config failed", e);
+  }
+  serverShareEnabled = config.shareEnabled === true;
+  if (config.authEnabled) {
+    await auth.initAuth(config);
+  }
+  await refreshAuthUI();
+
+  const loadedFromShare = await loadFromHash();
+  if (!loadedFromShare && auth.isEnabled() && (await auth.isAuthenticated())) {
+    await loadUserState();
   }
 }
 
-applyServerConfig();
-loadFromHash();
+init();

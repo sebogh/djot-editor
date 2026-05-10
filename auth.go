@@ -317,6 +317,39 @@ func (h *authHandler) handleLogout(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"logoutUrl": logoutURL})
 }
 
+// requireAuth resolves the session sub or writes 401 and returns false.
+// Use it as the first line of any authenticated handler.
+func (h *authHandler) requireAuth(w http.ResponseWriter, r *http.Request) (string, bool) {
+	sub, ok := h.sessionSub(r)
+	if !ok {
+		http.Error(w, "unauthenticated", http.StatusUnauthorized)
+		return "", false
+	}
+	return sub, true
+}
+
+// sessionSub returns the Auth0 subject of the user owning the request's
+// session cookie, or false if the cookie is missing, unknown, or expired.
+// Other handlers use this to gate access to authenticated endpoints.
+func (h *authHandler) sessionSub(r *http.Request) (string, bool) {
+	c, err := r.Cookie(sessionCookieName)
+	if err != nil || c.Value == "" {
+		return "", false
+	}
+	var sub string
+	var expiresAt int64
+	err = h.db.QueryRowContext(r.Context(),
+		"SELECT sub, expires_at FROM sessions WHERE id = ?", c.Value,
+	).Scan(&sub, &expiresAt)
+	if err != nil {
+		return "", false
+	}
+	if time.Now().Unix() > expiresAt {
+		return "", false
+	}
+	return sub, true
+}
+
 func (h *authHandler) handleMe(w http.ResponseWriter, r *http.Request) {
 	c, err := r.Cookie(sessionCookieName)
 	if err != nil || c.Value == "" {

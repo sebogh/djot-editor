@@ -20,7 +20,10 @@ import (
 //go:embed all:web/dist
 var distFS embed.FS
 
-const maxShareBytes = 1 << 20 // 1 MB
+const (
+	maxShareBytes = 1 << 20 // 1 MB
+	maxStateBytes = 1 << 20 // 1 MB
+)
 
 type shareRequest struct {
 	Ciphertext string `json:"ciphertext"`
@@ -62,6 +65,7 @@ func main() {
 	for _, ddl := range []string{
 		`CREATE TABLE IF NOT EXISTS shares (
 			id         TEXT PRIMARY KEY,
+			owner_sub  TEXT NOT NULL,
 			ciphertext TEXT NOT NULL,
 			created_at INTEGER NOT NULL
 		)`,
@@ -76,6 +80,11 @@ func main() {
 			state      TEXT PRIMARY KEY,
 			verifier   TEXT NOT NULL,
 			created_at INTEGER NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS user_state (
+			sub        TEXT PRIMARY KEY,
+			state_json TEXT NOT NULL DEFAULT '{}',
+			updated_at INTEGER NOT NULL
 		)`,
 	} {
 		if _, err := db.Exec(ddl); err != nil {
@@ -119,10 +128,66 @@ func main() {
 		mux.HandleFunc("GET /api/auth/callback", ah.handleCallback)
 		mux.HandleFunc("POST /api/auth/logout", ah.handleLogout)
 		mux.HandleFunc("GET /api/me", ah.handleMe)
+
+		mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) {
+			sub, ok := ah.requireAuth(w, r)
+			if !ok {
+				return
+			}
+			var stateJSON string
+			err := db.QueryRowContext(r.Context(),
+				"SELECT state_json FROM user_state WHERE sub = ?", sub,
+			).Scan(&stateJSON)
+			if errors.Is(err, sql.ErrNoRows) {
+				stateJSON = "{}"
+			} else if err != nil {
+				http.Error(w, "lookup", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(stateJSON))
+		})
+		mux.HandleFunc("PUT /api/state", func(w http.ResponseWriter, r *http.Request) {
+			sub, ok := ah.requireAuth(w, r)
+			if !ok {
+				return
+			}
+			body, err := io.ReadAll(io.LimitReader(r.Body, maxStateBytes+1))
+			if err != nil {
+				http.Error(w, "read body", http.StatusBadRequest)
+				return
+			}
+			if len(body) > maxStateBytes {
+				http.Error(w, "payload too large", http.StatusRequestEntityTooLarge)
+				return
+			}
+			if !json.Valid(body) {
+				http.Error(w, "invalid json", http.StatusBadRequest)
+				return
+			}
+			if _, err := db.ExecContext(r.Context(),
+				`INSERT INTO user_state (sub, state_json, updated_at) VALUES (?, ?, ?)
+				 ON CONFLICT(sub) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at`,
+				sub, string(body), time.Now().Unix(),
+			); err != nil {
+				http.Error(w, "store", http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		})
 	}
 	mux.HandleFunc("POST /api/shares", func(w http.ResponseWriter, r *http.Request) {
 		if !*share {
 			http.Error(w, "sharing is disabled", http.StatusForbidden)
+			return
+		}
+		if ah == nil {
+			http.Error(w, "sharing requires sign-in but auth is not configured", http.StatusForbidden)
+			return
+		}
+		sub, ok := ah.sessionSub(r)
+		if !ok {
+			http.Error(w, "unauthenticated", http.StatusUnauthorized)
 			return
 		}
 		body, err := io.ReadAll(io.LimitReader(r.Body, maxShareBytes+1))
@@ -149,8 +214,8 @@ func main() {
 			return
 		}
 		if _, err := db.Exec(
-			"INSERT INTO shares (id, ciphertext, created_at) VALUES (?, ?, ?)",
-			id, req.Ciphertext, time.Now().Unix(),
+			"INSERT INTO shares (id, owner_sub, ciphertext, created_at) VALUES (?, ?, ?, ?)",
+			id, sub, req.Ciphertext, time.Now().Unix(),
 		); err != nil {
 			http.Error(w, "store", http.StatusInternalServerError)
 			return
