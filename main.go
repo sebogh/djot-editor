@@ -59,12 +59,28 @@ func main() {
 		}
 	}
 
-	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS shares (
-		id         TEXT PRIMARY KEY,
-		ciphertext TEXT NOT NULL,
-		created_at INTEGER NOT NULL
-	)`); err != nil {
-		fatal("schema", "err", err)
+	for _, ddl := range []string{
+		`CREATE TABLE IF NOT EXISTS shares (
+			id         TEXT PRIMARY KEY,
+			ciphertext TEXT NOT NULL,
+			created_at INTEGER NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS sessions (
+			id         TEXT PRIMARY KEY,
+			sub        TEXT NOT NULL,
+			user_json  TEXT NOT NULL,
+			created_at INTEGER NOT NULL,
+			expires_at INTEGER NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS auth_states (
+			state      TEXT PRIMARY KEY,
+			verifier   TEXT NOT NULL,
+			created_at INTEGER NOT NULL
+		)`,
+	} {
+		if _, err := db.Exec(ddl); err != nil {
+			fatal("schema", "err", err)
+		}
 	}
 
 	dist, err := fs.Sub(distFS, "web/dist")
@@ -73,16 +89,17 @@ func main() {
 	}
 
 	authCfg := loadAuthConfig()
-	var tv *tokenValidator
+	var ah *authHandler
 	if authCfg.enabled() {
 		var err error
-		tv, err = newTokenValidator(authCfg)
+		ah, err = newAuthHandler(authCfg, db)
 		if err != nil {
 			fatal("auth", "err", err)
 		}
-		slog.Info("auth enabled", "domain", authCfg.Domain, "audience", authCfg.Audience)
+		cleanupExpired(db)
+		slog.Info("auth enabled", "domain", authCfg.Domain)
 	} else {
-		slog.Info("auth disabled (set AUTH0_DOMAIN, AUTH0_CLIENT_ID, AUTH0_AUDIENCE to enable)")
+		slog.Info("auth disabled (set AUTH0_DOMAIN, AUTH0_CLIENT_ID, AUTH0_CLIENT_SECRET to enable)")
 	}
 
 	mux := http.NewServeMux()
@@ -92,18 +109,16 @@ func main() {
 	})
 	mux.HandleFunc("GET /api/config", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		resp := map[string]any{"shareEnabled": *share}
-		if authCfg.enabled() {
-			resp["auth"] = map[string]string{
-				"domain":   authCfg.Domain,
-				"clientId": authCfg.ClientID,
-				"audience": authCfg.Audience,
-			}
-		}
-		_ = json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"shareEnabled": *share,
+			"authEnabled":  authCfg.enabled(),
+		})
 	})
-	if tv != nil {
-		mux.Handle("GET /api/me", tv.authenticate(http.HandlerFunc(handleMe)))
+	if ah != nil {
+		mux.HandleFunc("GET /api/auth/login", ah.handleLogin)
+		mux.HandleFunc("GET /api/auth/callback", ah.handleCallback)
+		mux.HandleFunc("POST /api/auth/logout", ah.handleLogout)
+		mux.HandleFunc("GET /api/me", ah.handleMe)
 	}
 	mux.HandleFunc("POST /api/shares", func(w http.ResponseWriter, r *http.Request) {
 		if !*share {

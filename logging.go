@@ -48,11 +48,11 @@ func loggingMiddleware(next http.Handler) http.Handler {
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", rec.status,
-			"duration_ms", time.Since(start).Milliseconds(),
-			"bytes_in", r.ContentLength,
-			"bytes_out", rec.bytes,
+			"durationMs", time.Since(start).Milliseconds(),
+			"bytesIn", r.ContentLength,
+			"bytesOut", rec.bytes,
 			"ip", clientIP(r),
-			"ua", r.UserAgent(),
+			//"ua", r.UserAgent(),
 		}
 
 		switch {

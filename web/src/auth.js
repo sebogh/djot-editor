@@ -1,68 +1,75 @@
-import { createAuth0Client } from "@auth0/auth0-spa-js";
+// Cookie-session auth client. The backend (BFF) holds all OAuth state; the
+// SPA only knows whether auth is enabled and who the current user is.
 
-let client = null;
-let cachedConfig = null;
-
-export async function initAuth(config) {
-  if (!config?.auth) return null;
-  cachedConfig = config.auth;
-  client = await createAuth0Client({
-    domain: config.auth.domain,
-    clientId: config.auth.clientId,
-    authorizationParams: {
-      audience: config.auth.audience,
-      redirect_uri: window.location.origin + window.location.pathname,
-    },
-    cacheLocation: "localstorage",
-    useRefreshTokens: true,
-  });
-
-  if (location.search.includes("code=") && location.search.includes("state=")) {
-    try {
-      await client.handleRedirectCallback();
-    } catch (e) {
-      console.error("auth callback failed", e);
-    }
-    const url = new URL(location.href);
-    url.search = "";
-    window.history.replaceState({}, document.title, url.toString());
-  }
-  return client;
-}
+let enabled = false;
+let cachedUser = null;
 
 export function isEnabled() {
-  return client !== null;
+  return enabled;
 }
 
 export async function isAuthenticated() {
-  return client ? client.isAuthenticated() : false;
+  return cachedUser !== null;
 }
 
 export async function getUser() {
-  return client ? client.getUser() : null;
+  return cachedUser;
 }
 
-export async function login() {
-  if (!client) return;
-  await client.loginWithRedirect();
+export async function initAuth(config) {
+  if (!config?.authEnabled) {
+    enabled = false;
+    cachedUser = null;
+    return null;
+  }
+  enabled = true;
+  await refreshUser();
+  return cachedUser;
+}
+
+export async function refreshUser() {
+  if (!enabled) {
+    cachedUser = null;
+    return null;
+  }
+  try {
+    const res = await fetch("./api/me", { credentials: "same-origin" });
+    if (res.ok) {
+      cachedUser = await res.json();
+    } else {
+      cachedUser = null;
+    }
+  } catch {
+    cachedUser = null;
+  }
+  return cachedUser;
+}
+
+export function login() {
+  if (!enabled) return;
+  window.location.href = "./api/auth/login";
 }
 
 export async function logout() {
-  if (!client) return;
-  await client.logout({
-    logoutParams: {
-      returnTo: window.location.origin + window.location.pathname,
-    },
-  });
-}
-
-export async function getAccessToken() {
-  if (!client) return null;
+  if (!enabled) return;
   try {
-    return await client.getTokenSilently();
-  } catch {
-    return null;
+    const res = await fetch("./api/auth/logout", {
+      method: "POST",
+      credentials: "same-origin",
+    });
+    cachedUser = null;
+    if (res.ok) {
+      const { logoutUrl } = await res.json();
+      if (logoutUrl) {
+        window.location.href = logoutUrl;
+        return;
+      }
+    }
+  } catch (e) {
+    console.error("logout failed", e);
   }
+  // Fallback: at least drop the SPA's cached state and reload.
+  window.location.reload();
 }
 
 export async function identiconDataUrl(seed) {
@@ -84,12 +91,4 @@ export async function identiconDataUrl(seed) {
   }
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50"><rect width="50" height="50" fill="${bg}"/><g fill="${fg}">${cells}</g></svg>`;
   return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
-}
-
-export async function authFetch(input, init = {}) {
-  const token = await getAccessToken();
-  if (!token) return fetch(input, init);
-  const headers = new Headers(init.headers || {});
-  headers.set("Authorization", `Bearer ${token}`);
-  return fetch(input, { ...init, headers });
 }

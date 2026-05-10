@@ -11,9 +11,6 @@ backend: frontend
 	go build .
 
 run: frontend
-	AUTH0_DOMAIN=qibli.eu.auth0.com \
-	AUTH0_CLIENT_ID=BSkEg9dGo0HrrOyuILxZRPREmOuLFLOq \
-	AUTH0_AUDIENCE=https://qibli.net \
 	go run .
 
 deploy: backend

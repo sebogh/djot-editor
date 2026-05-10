@@ -278,7 +278,7 @@ async function applyServerConfig() {
       shareBtn.disabled = true;
       shareBtn.title = "Sharing is disabled on this server";
     }
-    if (config.auth) {
+    if (config.authEnabled) {
       await auth.initAuth(config);
       await refreshAuthUI();
     }
