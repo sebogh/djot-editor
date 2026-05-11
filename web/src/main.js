@@ -26,7 +26,8 @@
 
 import "@picocss/pico/css/pico.min.css";
 import "./styles.css";
-
+import hljs from 'highlight.js';
+import 'highlight.js/styles/github-dark.css';
 import { Annotation, Compartment, EditorState } from "@codemirror/state";
 import { drawSelection, EditorView, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
@@ -47,9 +48,6 @@ const SETTINGS_DEFAULTS = Object.freeze({
 
 // Debounce saves for 2000ms.
 const debounceSaveMs = 2000;
-
-// CSS class for selected rendered HTML tags.
-const renderedHTMLClass = 'dr';
 
 // Annotations that mark editor transactions originating from a share or
 // state load, so the persistDoc updateListener doesn't treat the resulting
@@ -124,17 +122,14 @@ const renderOverrides = {
     // Check if a language was specified (e.g., "javascript")
     const langClass = node.lang ? `language-${node.lang}` : '';
 
-    // Your custom CSS theme class
-    const myCustomClass = renderedHTMLClass;
-
-    // Combine them (ignoring empty strings)
-    const classes = [langClass, myCustomClass].filter(Boolean).join(' ');
-
     // Escape the raw text content of the code block
     const safeText = escapeHtml(node.text);
 
+    // Highlight the code using highlight.js (optional, but adds nice formatting)
+    const ht = hljs.highlightAuto(safeText).value
+
     // Return the complete HTML string
-    return `<pre class="${myCustomClass}"><code class="${classes}">${safeText}</code></pre>\n`;
+    return `<pre><code class="${langClass}">${ht}</code></pre>\n`;
   }
 }
 

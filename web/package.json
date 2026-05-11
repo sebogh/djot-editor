@@ -21,7 +21,8 @@
     "@lezer/highlight": "^1.2.3",
     "@picocss/pico": "^2.1.1",
     "codemirror": "^6.0.2",
-    "dompurify": "^3.4.2"
+    "dompurify": "^3.4.2",
+    "highlight.js": "^11.11.1"
   },
   "devDependencies": {
     "vite": "^8.0.11"
