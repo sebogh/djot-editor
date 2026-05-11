@@ -48,6 +48,9 @@ const SETTINGS_DEFAULTS = Object.freeze({
 // Debounce saves for 2000ms.
 const debounceSaveMs = 2000;
 
+// CSS class for selected rendered HTML tags.
+const renderedHTMLClass = 'dr';
+
 // Annotations that mark editor transactions originating from a share or
 // state load, so the persistDoc updateListener doesn't treat the resulting
 // doc change as a user edit and trigger a save loop.
@@ -98,6 +101,45 @@ function applyTheme(theme) {
 }
 
 /**
+ * Helper function to escape HTML inside the code block.
+ * See renderOverrides.
+ */
+function escapeHtml(str) {
+  return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+}
+
+/**
+ * We need to identify selected, rendered HTML tags in the preview pane.
+ * Djot's renderer emits raw HTML for code blocks, so we override that to
+ * inject our own CSS class (`dr`), which lets us target it with a CSS
+ * selector.
+ */
+const renderOverrides = {
+  code_block: (node) => {
+    // Check if a language was specified (e.g., "javascript")
+    const langClass = node.lang ? `language-${node.lang}` : '';
+
+    // Your custom CSS theme class
+    const myCustomClass = renderedHTMLClass;
+
+    // Combine them (ignoring empty strings)
+    const classes = [langClass, myCustomClass].filter(Boolean).join(' ');
+
+    // Escape the raw text content of the code block
+    const safeText = escapeHtml(node.text);
+
+    // Return the complete HTML string
+    return `<pre class="${myCustomClass}"><code class="${classes}">${safeText}</code></pre>\n`;
+  }
+}
+
+
+/**
  * Render `text` as HTML via Djot and inject it into the preview pane.
  * DOMPurify strips any unsafe constructs the renderer might emit.
  * Parse errors are swallowed so a transient mid-edit failure doesn't blank
@@ -105,7 +147,7 @@ function applyTheme(theme) {
  */
 function renderPreview(text) {
   try {
-    previewEl.innerHTML = DOMPurify.sanitize(renderHTML(parse(text)));
+    previewEl.innerHTML = DOMPurify.sanitize(renderHTML(parse(text), {overrides : renderOverrides}));
   } catch {
     /* leave previous render in place on transient parse errors */
   }
