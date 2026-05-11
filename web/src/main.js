@@ -36,16 +36,7 @@ import DOMPurify from "dompurify";
 import { djotHighlight } from "./djot-highlight.js";
 import { createShare, loadShare } from "./share.js";
 import * as auth from "./auth.js";
-
-// Working state and UI settings now live server-side in /api/state for signed-in
-// users; for signed-out users nothing is persisted across reloads. Drop legacy
-// localStorage keys so old browsers don't carry stale drafts from earlier
-// versions of zorto that used localStorage.
-try {
-  localStorage.removeItem("zorto:doc");
-  localStorage.removeItem("zorto:title");
-  localStorage.removeItem("theme");
-} catch { /* unavailable, e.g. private browsing */ }
+import {generateName} from "./names";
 
 /** Defaults applied at startup and as the floor when /api/state is sparse. */
 const SETTINGS_DEFAULTS = Object.freeze({
@@ -102,6 +93,11 @@ function applyTheme(theme) {
     document.documentElement.setAttribute("data-theme", theme);
   }
 }
+
+/**
+ * Set a random string as title place-holder.
+ */
+titleInput.placeholder = generateName();
 
 /**
  * Render `text` as HTML via Djot and inject it into the preview pane.
