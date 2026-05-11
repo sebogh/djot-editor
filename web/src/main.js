@@ -19,7 +19,7 @@
  *
  * Persistence model (signed-in users only):
  *   - Edits to title, doc, theme, wrap, or preview funnel through
- *     `scheduleSave()`, which debounces 500 ms and PUTs the full state.
+ *     `scheduleSave()`, which debounces `debounceSaveMs` ms and PUTs the full state.
  *   - Viewing a share never writes — only after the user starts editing
  *     does `forkFromShare` strip the fragment and `scheduleSave` resume.
  */
@@ -44,6 +44,9 @@ const SETTINGS_DEFAULTS = Object.freeze({
   wrap: true,
   preview: false,
 });
+
+// Debounce saves for 2000ms.
+const debounceSaveMs = 2000;
 
 // Annotations that mark editor transactions originating from a share or
 // state load, so the persistDoc updateListener doesn't treat the resulting
@@ -413,18 +416,18 @@ async function saveState() {
   }
 }
 
-/** Coalesce many rapid changes into a single save 500 ms after the last one. */
+/** Coalesce many rapid changes into a single save `debounceSaveMs` ms after the last one. */
 function scheduleSave() {
   if (loadingState) return;
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     saveTimer = null;
     saveState();
-  }, 500);
+  }, debounceSaveMs);
 }
 
 /** Cancel any pending debounced save and write immediately. Used by Clear
- *  and after forking from a share, where waiting 500 ms could race a reload. */
+ *  and after forking from a share, where waiting `debounceSaveMs` ms could race a reload. */
 function flushSave() {
   if (saveTimer) {
     clearTimeout(saveTimer);
