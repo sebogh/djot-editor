@@ -209,7 +209,7 @@ body {
 
 .cm-editor {
   height: 100%;
-  font-size: 14px;
+  font-size: 16px;
   background: var(--pico-background-color);
   color: var(--pico-color);
 }
