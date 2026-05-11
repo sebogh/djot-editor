@@ -32,6 +32,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -270,12 +271,32 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(shareGetResponse{Ciphertext: ciphertext})
 	})
-	mux.Handle("/", http.FileServer(http.FS(dist)))
+	mux.Handle("/", staticCache(http.FileServer(http.FS(dist))))
 
 	slog.Info("listening", "addr", *addr)
 	if err := http.ListenAndServe(*addr, loggingMiddleware(mux)); err != nil {
 		fatal("listen", "err", err)
 	}
+}
+
+// staticCache sets Cache-Control on responses from the embedded SPA. Vite
+// emits content-hashed files under /assets/, so those are safe to cache
+// forever. The favicon is unhashed but changes rarely, so a one-day TTL
+// keeps it out of the request path without trapping a stale icon. Everything
+// else (index.html, logos) must revalidate so a redeploy is picked up
+// immediately.
+func staticCache(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/assets/"):
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		case r.URL.Path == "/favicon.ico":
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+		default:
+			w.Header().Set("Cache-Control", "no-cache")
+		}
+		h.ServeHTTP(w, r)
+	})
 }
 
 // newShareID returns a random 12-character base64url id used as the primary
