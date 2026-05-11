@@ -13,6 +13,13 @@
   --djot-math: #7c3aed;
 }
 
+:root {--pico-font-size: 100%;}
+@media (min-width: 576px) {:root {--pico-font-size: 100%;}}
+@media (min-width: 768px) {:root {--pico-font-size: 100%;}}
+@media (min-width: 1024px) {:root {--pico-font-size: 100%;}}
+@media (min-width: 1280px) {:root {--pico-font-size: 100%;}}
+@media (min-width: 1536px) {:root {--pico-font-size: 100%;}}
+
 @media only screen and (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --djot-heading: #e879f9;
