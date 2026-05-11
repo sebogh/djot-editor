@@ -11,6 +11,7 @@ backend: frontend
 	go build .
 
 run: frontend
+	[ -f .env ] && set -a && . ./.env && set +a; \
 	go run . --share=false
 
 deploy: backend

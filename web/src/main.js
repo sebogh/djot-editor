@@ -95,11 +95,6 @@ function applyTheme(theme) {
 }
 
 /**
- * Set a random string as title place-holder.
- */
-titleInput.placeholder = generateName();
-
-/**
  * Render `text` as HTML via Djot and inject it into the preview pane.
  * DOMPurify strips any unsafe constructs the renderer might emit.
  * Parse errors are swallowed so a transient mid-edit failure doesn't blank
@@ -214,7 +209,7 @@ function sanitizeFilename(title) {
 
 clearBtn.addEventListener("click", () => {
   linkedToShare = false;
-  titleInput.value = "";
+  titleInput.value = generateName();
   view.dispatch({
     changes: { from: 0, to: view.state.doc.length, insert: "" },
   });
@@ -531,6 +526,10 @@ async function init() {
   if (!loadedFromShare && auth.isEnabled() && (await auth.isAuthenticated())) {
     await loadUserState();
   }
+
+  // Fall back to a random title only after every load path has run, so users
+  // with a saved title never see it flicker from random → saved.
+  if (!titleInput.value) titleInput.value = generateName();
 }
 
 init();

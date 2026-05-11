@@ -35,5 +35,5 @@ export function generateName() {
     const firstLetter = randomNoun.charAt(0).toLowerCase();
     const matchingAdjectives = adjectives[firstLetter];
     const randomAdj = matchingAdjectives[Math.floor(Math.random() * matchingAdjectives.length)];
-    return `${randomAdj}-${randomNoun}`;
+    return `${randomAdj} ${randomNoun}`;
 }
