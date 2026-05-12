@@ -99,36 +99,17 @@ function applyTheme(theme) {
 }
 
 /**
- * Helper function to escape HTML inside the code block.
- * See renderOverrides.
- */
-function escapeHtml(str) {
-  return str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-}
-
-/**
- * We need to identify selected, rendered HTML tags in the preview pane.
- * Djot's renderer emits raw HTML for code blocks, so we override that to
- * inject our own CSS class (`dr`), which lets us target it with a CSS
- * selector.
+ * Overrides for HTML created by Djot.
+ * For now only run code_blocks through highlighjs.
  */
 const renderOverrides = {
   code_block: (node) => {
     // Check if a language was specified (e.g., "javascript")
     const langClass = node.lang ? `language-${node.lang}` : '';
+      
+    // highlight.js takes raw text and returns HTML-escaped, highlighted markup.
+    const ht = hljs.highlightAuto(node.text).value;
 
-    // Escape the raw text content of the code block
-    const safeText = escapeHtml(node.text);
-
-    // Highlight the code using highlight.js (optional, but adds nice formatting)
-    const ht = hljs.highlightAuto(safeText).value
-
-    // Return the complete HTML string
     return `<pre><code class="${langClass}">${ht}</code></pre>\n`;
   }
 }
